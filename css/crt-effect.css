@@ -1,0 +1,118 @@
+/* === CRT 复古效果 === */
+
+/* CRT扫描线叠加层 */
+.crt-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.crt-overlay.active {
+  opacity: 1;
+}
+
+/* 扫描线效果 */
+.crt-overlay.scanlines::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.15) 0px,
+    rgba(0, 0, 0, 0.15) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  z-index: 1;
+}
+
+/* CRT屏幕凸起效果 */
+.crt-overlay.curvature::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 60%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+  z-index: 2;
+}
+
+/* 屏幕边缘暗角 */
+.crt-overlay.vignette::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.6);
+  z-index: 0;
+}
+
+/* 轻微的色彩偏移 (模拟CRT色差) */
+.crt-overlay.chromatic {
+  animation: chromaticShift 0.1s infinite alternate;
+}
+
+@keyframes chromaticShift {
+  0% { 
+    filter: none;
+  }
+  100% { 
+    filter: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><filter id='c'><feOffset in='SourceGraphic' dx='1' dy='0' result='r'/><feBlend in='SourceGraphic' in2='r' mode='screen'/></filter></svg>#c");
+  }
+}
+
+/* 屏幕闪烁效果（轻微） */
+@keyframes crtFlicker {
+  0% { opacity: 0.97; }
+  5% { opacity: 1; }
+  10% { opacity: 0.98; }
+  15% { opacity: 1; }
+  50% { opacity: 1; }
+  52% { opacity: 0.96; }
+  54% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+.crt-overlay.flicker {
+  animation: crtFlicker 4s infinite;
+}
+
+/* 屏幕开机辉光 */
+.screen-container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 70%,
+    rgba(0, 20, 0, 0.2) 100%
+  );
+  transition: opacity 0.5s ease;
+}
+
+.screen-container.running::after {
+  opacity: 0;
+}
+
+/* 像素化渲染 */
+.screen-container canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* 无信号时的雪花效果（不启用） */
+.screen-container.no-signal::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.15'/%3E%3C/svg%3E");
+  background-size: 128px 128px;
+  animation: none;
+}
