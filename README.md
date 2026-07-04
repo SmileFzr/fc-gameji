@@ -110,6 +110,4 @@ JSNES 模拟器库遵循其原始开源协议。
 ❤️ 怀念童年，重温经典
 ##预览
 <img width="1912" height="914" alt="image" src="https://github.com/user-attachments/assets/bdd422db-9941-4627-8d7d-3961b254e64f" />
-
-<img width="1752" height="837" alt="image" src="https://github.com/user-attachments/assets/f77b6b5e-7cc3-4e1d-84d5-73e7026fc7cb" />
-
+<img width="1826" height="868" alt="image" src="https://github.com/user-attachments/assets/bdd4235c-3f79-4dba-8ade-78e16a46bc29" />
