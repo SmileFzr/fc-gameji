@@ -7,6 +7,8 @@ class UIManager {
   constructor() {
     this.elements = {};
     this.toastTimer = null;
+    this.SETTINGS_KEY = 'fc_settings';
+    this.settings = this.loadSettings();
   }
 
   /**
@@ -21,14 +23,224 @@ class UIManager {
       'btnCloseSaveModal', 'btnCloseSaveModal2', 'btnImportSave',
       'btnEditKeymap', 'btnCloseKeymapModal', 'btnCloseKeymapModal2', 'btnResetKeymap',
       'fileInput', 'saveImportInput',
-      'toggleCRT', 'toggleScanlines', 'selectScale',
+      'toggleSound', 'toggleCRT', 'toggleScanlines', 'selectScale',
+      'volumeSlider', 'volumeValue', 'inputModeSwitch',
       'crtOverlay', 'saveModal', 'saveSlots', 'toastContainer',
       'keymapModal', 'keymapConfig', 'keymapDisplay',
-      'fcConsole'
+      'fcConsole',
+      'virtualGamepad', 'gamepadToggle', 'padTools',
+      'toolSound', 'toolLayout', 'toolFocus', 'toolHidePad'
     ];
 
     for (const id of ids) {
       this.elements[id] = document.getElementById(id);
+    }
+  }
+
+  // ==================== 设置持久化 ====================
+
+  loadSettings() {
+    const defaults = {
+      sound: true,
+      volume: 70,
+      crt: true,
+      scanlines: true,
+      scale: 2.5
+    };
+    try {
+      const saved = JSON.parse(localStorage.getItem('fc_settings') || '{}');
+      return { ...defaults, ...saved };
+    } catch (e) {
+      return defaults;
+    }
+  }
+
+  saveSettings(patch) {
+    this.settings = { ...this.settings, ...patch };
+    try {
+      localStorage.setItem(this.SETTINGS_KEY, JSON.stringify(this.settings));
+    } catch (e) { /* 忽略 */ }
+  }
+
+  /**
+   * 应用本地保存的各项设置（启动时调用一次）
+   */
+  applyStoredSettings() {
+    const s = this.settings;
+
+    // 画面大小
+    this.setScale(s.scale, false);
+
+    // CRT / 扫描线
+    if (this.elements.toggleCRT) this.elements.toggleCRT.checked = !!s.crt;
+    if (this.elements.toggleScanlines) this.elements.toggleScanlines.checked = !!s.scanlines;
+    this.toggleCRT(!!s.crt);
+    this.toggleScanlines(!!s.scanlines);
+
+    // 声音
+    emulator.setVolume(s.volume / 100);
+    emulator.setMuted(!s.sound);
+    if (this.elements.toggleSound) this.elements.toggleSound.checked = !!s.sound;
+    if (this.elements.volumeSlider) {
+      this.elements.volumeSlider.value = s.volume;
+      this.updateVolumeUI(s.volume);
+    }
+    this.updateSoundUI();
+
+    // 操作方式
+    this.updateInputModeUI(controller.inputMode);
+  }
+
+  isTouchDevice() {
+    return window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+  }
+
+  // ==================== 声音 ====================
+
+  /**
+   * 声音开关
+   */
+  setSoundEnabled(enabled, notify = false) {
+    emulator.setMuted(!enabled);
+    if (this.elements.toggleSound) this.elements.toggleSound.checked = !!enabled;
+    this.updateSoundUI();
+    this.saveSettings({ sound: !!enabled });
+    if (notify) {
+      this.showToast(enabled ? '声音已开启' : '声音已关闭', 'info');
+    }
+  }
+
+  toggleSound(notify = false) {
+    this.setSoundEnabled(emulator.muted, notify);
+  }
+
+  /**
+   * 声音相关 UI 同步
+   */
+  updateSoundUI() {
+    const muted = emulator.muted || !emulator.isAudioSupported();
+    if (this.elements.toolSound) {
+      this.elements.toolSound.textContent = muted ? '🔇' : '🔊';
+      this.elements.toolSound.classList.toggle('is-off', muted);
+      this.elements.toolSound.title = muted ? '开启声音' : '关闭声音';
+    }
+    if (this.elements.toggleSound) {
+      this.elements.toggleSound.checked = !emulator.muted;
+    }
+  }
+
+  /**
+   * 音量 UI 同步
+   */
+  updateVolumeUI(value) {
+    const v = Math.max(0, Math.min(100, Number(value) || 0));
+    if (this.elements.volumeValue) {
+      this.elements.volumeValue.textContent = v + '%';
+    }
+    if (this.elements.volumeSlider) {
+      this.elements.volumeSlider.style.setProperty('--vol', v + '%');
+    }
+  }
+
+  setVolume(value) {
+    const v = Math.max(0, Math.min(100, Number(value) || 0));
+    emulator.setVolume(v / 100);
+    this.updateVolumeUI(v);
+    this.saveSettings({ volume: v });
+    // 拖到 0 视为静音，大于 0 自动开声
+    if (v === 0) {
+      emulator.setMuted(true);
+      this.updateSoundUI();
+      this.saveSettings({ sound: false });
+    } else if (emulator.muted) {
+      emulator.setMuted(false);
+      this.updateSoundUI();
+      this.saveSettings({ sound: true });
+    }
+  }
+
+  // ==================== 操作方式 ====================
+
+  updateInputModeUI(mode) {
+    const m = mode === 'joystick' ? 'joystick' : 'dpad';
+
+    if (this.elements.inputModeSwitch) {
+      this.elements.inputModeSwitch.querySelectorAll('.seg-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === m);
+      });
+    }
+
+    if (this.elements.toolLayout) {
+      this.elements.toolLayout.textContent = m === 'joystick' ? '🕹️' : '✚';
+      this.elements.toolLayout.classList.toggle('is-active', m === 'joystick');
+      this.elements.toolLayout.title = m === 'joystick' ? '当前：摇杆（点击切换为方向键）' : '当前：方向键（点击切换为摇杆）';
+    }
+  }
+
+  setInputMode(mode, notify = false) {
+    controller.setInputMode(mode);
+    this.updateInputModeUI(controller.inputMode);
+    if (notify) {
+      this.showToast(
+        controller.inputMode === 'joystick' ? '已切换为摇杆操作' : '已切换为方向键操作',
+        'info'
+      );
+    }
+  }
+
+  // ==================== 虚拟手柄显示 ====================
+
+  setPadVisible(visible) {
+    const gamepad = this.elements.virtualGamepad;
+    if (!gamepad) return;
+    gamepad.classList.toggle('is-visible', !!visible);
+    document.body.classList.toggle('pad-visible', !!visible);
+    if (this.elements.gamepadToggle) {
+      this.elements.gamepadToggle.classList.toggle('is-active', !!visible);
+      this.elements.gamepadToggle.title = visible ? '隐藏虚拟手柄' : '显示虚拟手柄';
+    }
+  }
+
+  isPadVisible() {
+    return document.body.classList.contains('pad-visible');
+  }
+
+  togglePad() {
+    this.setPadVisible(!this.isPadVisible());
+  }
+
+  // ==================== 沉浸模式 ====================
+
+  toggleFocusMode() {
+    const on = document.body.classList.toggle('focus-mode');
+    const btn = this.elements.toolFocus;
+
+    if (btn) {
+      btn.classList.toggle('is-active', on);
+      btn.title = on ? '退出沉浸模式' : '沉浸模式';
+    }
+
+    if (on) {
+      // 尽量进入系统全屏，手机上可隐藏地址栏
+      const el = document.documentElement;
+      if (el.requestFullscreen) {
+        el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+      }
+      this.showToast('沉浸模式：点右上角 ⛶ 或按 ESC 退出', 'info');
+    } else if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  exitFocusMode() {
+    if (!document.body.classList.contains('focus-mode')) return;
+    document.body.classList.remove('focus-mode');
+    if (this.elements.toolFocus) {
+      this.elements.toolFocus.classList.remove('is-active');
+      this.elements.toolFocus.title = '沉浸模式';
+    }
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
     }
   }
 
@@ -44,6 +256,11 @@ class UIManager {
 
     // 启用控制按钮
     this.setGameControlsEnabled(true);
+
+    // 触屏设备在游戏开始后自动显示虚拟手柄
+    if (this.isTouchDevice()) {
+      this.setPadVisible(true);
+    }
   }
 
   /**
@@ -313,27 +530,27 @@ class UIManager {
   }
 
   /**
-   * 设置画面缩放
+   * 设置画面大小
+   * 画面始终铺满屏幕区域（不会被裁切），这里调整机壳整体宽度实现等比放大
    */
-  setScale(scale) {
-    const canvas = this.elements.gameCanvas;
-    // Canvas内部尺寸不变，通过CSS缩放
-    canvas.style.width = (256 * scale) + 'px';
-    canvas.style.height = (240 * scale) + 'px';
+  setScale(scale, persist = true) {
+    const s = parseFloat(scale) || 2.5;
+    const maxWidth = Math.round(256 * s + 300);
+    document.documentElement.style.setProperty('--console-max', maxWidth + 'px');
+
+    if (this.elements.selectScale) {
+      this.elements.selectScale.value = String(s);
+    }
+    if (persist) {
+      this.saveSettings({ scale: s });
+    }
   }
 
   /**
-   * 切换全屏
+   * 切换全屏（改用沉浸模式，屏幕与手柄一起全屏）
    */
   toggleFullscreen() {
-    const el = this.elements.screenContainer;
-    if (!document.fullscreenElement) {
-      el.requestFullscreen().catch(err => {
-        this.showToast('全屏失败: ' + err.message, 'error');
-      });
-    } else {
-      document.exitFullscreen();
-    }
+    this.toggleFocusMode();
   }
 
   /**
@@ -497,25 +714,75 @@ class UIManager {
     // CRT效果开关
     this.elements.toggleCRT?.addEventListener('change', (e) => {
       this.toggleCRT(e.target.checked);
+      this.saveSettings({ crt: e.target.checked });
     });
 
     // 扫描线开关
     this.elements.toggleScanlines?.addEventListener('change', (e) => {
       this.toggleScanlines(e.target.checked);
+      this.saveSettings({ scanlines: e.target.checked });
     });
 
-    // 画面比例
+    // 画面大小
     this.elements.selectScale?.addEventListener('change', (e) => {
       this.setScale(parseFloat(e.target.value));
+    });
+
+    // 声音开关
+    this.elements.toggleSound?.addEventListener('change', (e) => {
+      this.setSoundEnabled(e.target.checked, true);
+    });
+
+    // 音量
+    this.elements.volumeSlider?.addEventListener('input', (e) => {
+      this.setVolume(e.target.value);
+    });
+
+    // 操作方式（方向键 / 摇杆）
+    this.elements.inputModeSwitch?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.seg-btn');
+      if (!btn) return;
+      this.setInputMode(btn.dataset.mode, true);
+    });
+
+    // 悬浮工具条：声音
+    this.elements.toolSound?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleSound(true);
+    });
+
+    // 悬浮工具条：操作方式
+    this.elements.toolLayout?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setInputMode(controller.inputMode === 'dpad' ? 'joystick' : 'dpad', true);
+    });
+
+    // 悬浮工具条：沉浸模式
+    this.elements.toolFocus?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleFocusMode();
+    });
+
+    // 悬浮工具条：显示/隐藏手柄
+    this.elements.gamepadToggle?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.togglePad();
+    });
+
+    // 手柄内工具条：收起手柄
+    this.elements.toolHidePad?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setPadVisible(false);
+      this.showToast('已收起手柄，点右下角 🎮 可再次打开', 'info');
     });
 
     // 拖拽ROM文件
     this.bindDragDrop();
 
-    // 全屏变化监听
+    // 全屏变化监听（用户按 ESC 退出全屏时同步退出沉浸模式）
     document.addEventListener('fullscreenchange', () => {
       if (!document.fullscreenElement) {
-        this.setScale(parseFloat(this.elements.selectScale?.value || '2.5'));
+        this.exitFocusMode();
       }
     });
 
@@ -533,15 +800,27 @@ class UIManager {
       controller.releaseAll();
     });
 
-    // ESC关闭弹窗
+    // 页面不可见时松开按键，避免回来后一直朝一个方向跑
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) controller.releaseAll();
+    });
+
+    // 加载ROM或任意交互时尝试恢复音频（浏览器自动播放限制）
+    const resumeAudio = () => emulator.resumeAudio();
+    document.addEventListener('pointerdown', resumeAudio, { passive: true });
+    document.addEventListener('keydown', resumeAudio);
+    document.addEventListener('touchstart', resumeAudio, { passive: true });
+
+    // ESC关闭弹窗 / 退出沉浸模式
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        if (this.elements.saveModal.classList.contains('active')) {
+        if (this.elements.saveModal?.classList.contains('active')) {
           this.hideSaveModal();
         }
-        if (this.elements.keymapModal.classList.contains('active')) {
+        if (this.elements.keymapModal?.classList.contains('active')) {
           this.hideKeymapModal();
         }
+        this.exitFocusMode();
       }
     });
   }

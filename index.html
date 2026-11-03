@@ -2,7 +2,11 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#8b0000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>FC 游戏机 - 童年经典在线玩</title>
   <link rel="stylesheet" href="css/main.css">
   <link rel="stylesheet" href="css/crt-effect.css">
@@ -55,7 +59,8 @@
                   <button class="btn btn-primary" id="btnLoadROM">
                     <span class="btn-icon">📂</span> 打开 ROM 文件
                   </button>
-                  <p class="placeholder-hint">或将 .nes 文件拖拽到此区域</p>
+                  <p class="placeholder-hint desktop-only">或将 .nes 文件拖拽到此区域</p>
+                  <p class="placeholder-hint touch-only">手机请点击上方按钮选择 .nes 文件</p>
                 </div>
               </div>
             </div>
@@ -118,8 +123,13 @@
           </div>
 
           <div class="panel-section">
-            <h3 class="panel-title">显示设置</h3>
-            <div class="settings-row">
+            <h3 class="panel-title">显示与声音</h3>
+            <div class="settings-row toggle-grid">
+              <label class="toggle-label">
+                <input type="checkbox" id="toggleSound" checked>
+                <span class="toggle-switch"></span>
+                游戏声音
+              </label>
               <label class="toggle-label">
                 <input type="checkbox" id="toggleCRT" checked>
                 <span class="toggle-switch"></span>
@@ -132,15 +142,32 @@
               </label>
             </div>
             <div class="settings-row">
-              <label class="slider-label">
-                <span>画面比例</span>
-                <select id="selectScale" class="scale-select">
-                  <option value="2">2x</option>
-                  <option value="2.5" selected>2.5x</option>
-                  <option value="3">3x</option>
-                  <option value="3.5">3.5x</option>
-                </select>
+              <label class="slider-label" for="volumeSlider">
+                <span>音量</span>
+                <span class="volume-value" id="volumeValue">70%</span>
               </label>
+              <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" step="5" value="70">
+            </div>
+            <div class="settings-row">
+              <span class="slider-label static">画面大小</span>
+              <select id="selectScale" class="scale-select">
+                <option value="2">小</option>
+                <option value="2.5" selected>标准</option>
+                <option value="3">大</option>
+                <option value="3.5">超大</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="panel-section">
+            <h3 class="panel-title">触屏操作</h3>
+            <div class="settings-row">
+              <span class="slider-label static">方向控制</span>
+              <div class="segmented" id="inputModeSwitch">
+                <button type="button" class="seg-btn" data-mode="dpad">方向键</button>
+                <button type="button" class="seg-btn" data-mode="joystick">摇杆</button>
+              </div>
+              <p class="panel-hint">方向键：逐格点按，适合精准走位；摇杆：拖拽滑动，适合格斗、飞行类游戏。</p>
             </div>
           </div>
         </div>

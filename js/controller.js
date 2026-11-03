@@ -1,6 +1,6 @@
 /**
  * 控制器模块
- * 键盘映射、虚拟手柄、自定义按键绑定
+ * 键盘映射、虚拟手柄（方向键 / 摇杆两种操作方式）、自定义按键绑定
  */
 
 class Controller {
@@ -57,17 +57,31 @@ class Controller {
     // 当前按下的按键
     this.pressedKeys = new Set();
 
-    // 手柄按键元素映射
+    // 每个按钮被按住的计数（键盘与触屏可能同时按同一个键）
+    this.buttonHolders = {};
+
+    // 方向状态（触摸区域当前产生的方向）
+    this.directionState = new Set();
+
+    // 操作方式：dpad（方向键）/ joystick（摇杆）
+    this.inputMode = this.loadInputMode();
+
+    // 虚拟手柄元素
     this.gamepadElements = {};
+    this._activePointers = {};
 
     // 是否已绑定
     this.bound = false;
+    this._onKeyDownHandler = this._onKeyDown.bind(this);
+    this._onKeyUpHandler = this._onKeyUp.bind(this);
 
     // 按键重映射状态
     this.isRemapping = false;
     this.remappingButton = null;
     this.remappingCallback = null;
   }
+
+  // ==================== 按键映射 ====================
 
   /**
    * 从localStorage加载自定义按键映射
@@ -77,14 +91,12 @@ class Controller {
       const saved = localStorage.getItem('fc_keymap');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // 验证所有值是否有效
         const validMap = {};
         for (const [code, button] of Object.entries(parsed)) {
           if (Object.values(this.BUTTONS).includes(button)) {
             validMap[code] = button;
           }
         }
-        // 合并默认值和自定义值
         return { ...this.defaultKeyMap, ...validMap };
       }
     } catch (e) {
@@ -116,17 +128,14 @@ class Controller {
    * 设置按键映射（用于自定义按键）
    */
   setKeyMapping(button, keyCode) {
-    // 移除该按钮之前的映射（避免重复）
     for (const [code, btn] of Object.entries(this.keyMap)) {
       if (btn === button) {
         delete this.keyMap[code];
       }
     }
-    // 如果新按键已被其他按钮使用，移除旧映射
     if (this.keyMap[keyCode] !== undefined) {
       delete this.keyMap[keyCode];
     }
-    // 设置新映射
     this.keyMap[keyCode] = button;
     this.saveKeyMap();
   }
@@ -148,13 +157,10 @@ class Controller {
     this.remappingButton = button;
     this.remappingCallback = callback;
 
-    // 添加一次性按键监听
     const handler = (e) => {
-      // 忽略功能键和修饰键
       if (['F5', 'F7', 'F12', 'Tab', 'Escape', 'CapsLock'].includes(e.code)) {
         return;
       }
-      // 忽略纯修饰键
       if (e.code.startsWith('Control') || e.code.startsWith('Alt') || e.code.startsWith('Meta')) {
         return;
       }
@@ -172,11 +178,9 @@ class Controller {
       }
 
       document.removeEventListener('keydown', handler, true);
+      document.removeEventListener('keydown', cancelHandler, true);
     };
 
-    document.addEventListener('keydown', handler, true);
-
-    // 取消重映射（按Escape）
     const cancelHandler = (e) => {
       if (e.code === 'Escape') {
         this.isRemapping = false;
@@ -189,8 +193,12 @@ class Controller {
         document.removeEventListener('keydown', cancelHandler, true);
       }
     };
+
+    document.addEventListener('keydown', handler, true);
     document.addEventListener('keydown', cancelHandler, true);
   }
+
+  // ==================== 键盘 ====================
 
   /**
    * 绑定键盘事件
@@ -198,8 +206,8 @@ class Controller {
   bind() {
     if (this.bound) return;
 
-    document.addEventListener('keydown', this._onKeyDown.bind(this));
-    document.addEventListener('keyup', this._onKeyUp.bind(this));
+    document.addEventListener('keydown', this._onKeyDownHandler);
+    document.addEventListener('keyup', this._onKeyUpHandler);
 
     // 阻止默认行为（防止方向键滚动页面等）
     document.addEventListener('keydown', (e) => {
@@ -207,10 +215,12 @@ class Controller {
         'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
         'Space', 'Enter'
       ];
-      if (preventKeys.includes(e.code) && document.activeElement === document.body) {
+      const tag = document.activeElement && document.activeElement.tagName;
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      if (preventKeys.includes(e.code) && !isTyping) {
         e.preventDefault();
       }
-    });
+    }, { passive: false });
 
     this.bound = true;
   }
@@ -219,8 +229,8 @@ class Controller {
    * 解绑键盘事件
    */
   unbind() {
-    document.removeEventListener('keydown', this._onKeyDown.bind(this));
-    document.removeEventListener('keyup', this._onKeyUp.bind(this));
+    document.removeEventListener('keydown', this._onKeyDownHandler);
+    document.removeEventListener('keyup', this._onKeyUpHandler);
     this.bound = false;
   }
 
@@ -228,8 +238,11 @@ class Controller {
    * 键盘按下处理
    */
   _onKeyDown(e) {
-    // 重映射模式下忽略所有按键
     if (this.isRemapping) return;
+
+    const tag = e.target && e.target.tagName;
+    const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    if (isTyping) return;
 
     if (this.pressedKeys.has(e.code)) return;
 
@@ -237,10 +250,9 @@ class Controller {
     if (button !== undefined) {
       e.preventDefault();
       this.pressedKeys.add(e.code);
-      emulator.buttonDown(button);
+      this.pressButton(button);
     }
 
-    // 快捷键处理
     if (e.code === 'F5') {
       e.preventDefault();
       document.dispatchEvent(new CustomEvent('fc:quicksave'));
@@ -255,14 +267,13 @@ class Controller {
    * 键盘释放处理
    */
   _onKeyUp(e) {
-    // 重映射模式下忽略
     if (this.isRemapping) return;
 
     const button = this.keyMap[e.code];
     if (button !== undefined) {
       e.preventDefault();
       this.pressedKeys.delete(e.code);
-      emulator.buttonUp(button);
+      this.releaseButton(button);
     }
   }
 
@@ -270,14 +281,111 @@ class Controller {
    * 释放所有按键（用于失焦时）
    */
   releaseAll() {
-    for (const code of this.pressedKeys) {
-      const button = this.keyMap[code];
-      if (button !== undefined) {
-        emulator.buttonUp(button);
+    this.pressedKeys.clear();
+    this.buttonHolders = {};
+    this.directionState.clear();
+    for (let b = 0; b <= 7; b++) {
+      emulator.buttonUp(b);
+    }
+    this._updateDpadVisual(new Set());
+    this._resetJoystickVisual();
+  }
+
+  // ==================== 按钮引用计数 ====================
+
+  /**
+   * 按下按钮（多个来源同时按住时只在第一次真正按下）
+   */
+  pressButton(button) {
+    const count = this.buttonHolders[button] || 0;
+    this.buttonHolders[button] = count + 1;
+    if (count === 0) {
+      emulator.buttonDown(button);
+      this._highlightButton(button, true);
+    }
+  }
+
+  /**
+   * 释放按钮
+   */
+  releaseButton(button) {
+    const count = this.buttonHolders[button] || 0;
+    if (count <= 1) {
+      delete this.buttonHolders[button];
+      emulator.buttonUp(button);
+      this._highlightButton(button, false);
+    } else {
+      this.buttonHolders[button] = count - 1;
+    }
+  }
+
+  /**
+   * 重新应用当前按住的状态（读档/暂停恢复后调用）
+   */
+  reapplyHeld() {
+    for (const key of Object.keys(this.buttonHolders)) {
+      if (this.buttonHolders[key] > 0) {
+        emulator.buttonDown(parseInt(key, 10));
       }
     }
-    this.pressedKeys.clear();
   }
+
+  /**
+   * 键盘按键时高亮虚拟手柄对应按钮（桌面端也能看到反馈）
+   */
+  _highlightButton(button, pressed) {
+    const map = {
+      [this.BUTTONS.A]: 'gpA',
+      [this.BUTTONS.B]: 'gpB',
+      [this.BUTTONS.START]: 'gpStart',
+      [this.BUTTONS.SELECT]: 'gpSelect'
+    };
+    const id = map[button];
+    if (id && this.gamepadElements[id]) {
+      this.gamepadElements[id].classList.toggle('pressed', pressed);
+    }
+  }
+
+  // ==================== 操作方式 ====================
+
+  loadInputMode() {
+    try {
+      const saved = localStorage.getItem('fc_input_mode');
+      if (saved === 'joystick' || saved === 'dpad') return saved;
+    } catch (e) { /* 忽略 */ }
+    return 'dpad';
+  }
+
+  /**
+   * 切换操作方式：dpad / joystick
+   */
+  setInputMode(mode) {
+    this.inputMode = mode === 'joystick' ? 'joystick' : 'dpad';
+    try {
+      localStorage.setItem('fc_input_mode', this.inputMode);
+    } catch (e) { /* 忽略 */ }
+
+    document.body.classList.toggle('mode-joystick', this.inputMode === 'joystick');
+    document.body.classList.toggle('mode-dpad', this.inputMode === 'dpad');
+
+    // 切换时松开方向，避免卡键
+    this._setDirectionState({});
+    this._resetJoystickVisual();
+    this.emitInputMode();
+  }
+
+  emitInputMode() {
+    document.dispatchEvent(new CustomEvent('fc:inputmode', {
+      detail: { mode: this.inputMode }
+    }));
+  }
+
+  cycleInputMode() {
+    this.setInputMode(this.inputMode === 'dpad' ? 'joystick' : 'dpad');
+    return this.inputMode;
+  }
+
+  // ==================== 虚拟手柄 ====================
 
   /**
    * 设置虚拟手柄元素
@@ -291,146 +399,205 @@ class Controller {
    * 绑定虚拟手柄事件
    */
   _bindGamepadEvents() {
-    // 方向键
-    const dpadButtons = {
-      'dpadUp': this.BUTTONS.UP,
-      'dpadDown': this.BUTTONS.DOWN,
-      'dpadLeft': this.BUTTONS.LEFT,
-      'dpadRight': this.BUTTONS.RIGHT,
-    };
+    const el = this.gamepadElements;
 
-    for (const [id, button] of Object.entries(dpadButtons)) {
-      const el = this.gamepadElements[id];
-      if (!el) continue;
-
-      this._bindButtonEvents(el, button);
+    // 方向区：整块区域统一处理，手指滑动可平滑切换方向
+    if (el.dpadZone) {
+      this._bindDirectionZone(el.dpadZone, { joystick: false });
+    }
+    if (el.joystickZone) {
+      this._bindDirectionZone(el.joystickZone, { joystick: true });
     }
 
-    // 功能键
-    const funcButtons = {
-      'gpSelect': this.BUTTONS.SELECT,
-      'gpStart': this.BUTTONS.START,
+    // 按钮
+    const buttons = {
+      gpSelect: this.BUTTONS.SELECT,
+      gpStart: this.BUTTONS.START,
+      gpA: this.BUTTONS.A,
+      gpB: this.BUTTONS.B
     };
-
-    for (const [id, button] of Object.entries(funcButtons)) {
-      const el = this.gamepadElements[id];
-      if (!el) continue;
-      this._bindButtonEvents(el, button);
-    }
-
-    // AB键
-    const actionButtons = {
-      'gpA': this.BUTTONS.A,
-      'gpB': this.BUTTONS.B,
-    };
-
-    for (const [id, button] of Object.entries(actionButtons)) {
-      const el = this.gamepadElements[id];
-      if (!el) continue;
-      this._bindButtonEvents(el, button);
+    for (const [id, button] of Object.entries(buttons)) {
+      if (el[id]) this._bindHoldButton(el[id], button);
     }
   }
 
   /**
-   * 为单个虚拟按钮绑定事件
+   * 为单个虚拟按钮绑定按下/抬起（Pointer Events，支持多指）
    */
-  _bindButtonEvents(el, button) {
-    const pressStart = (e) => {
+  _bindHoldButton(element, button) {
+    let pointerId = null;
+
+    const press = (e) => {
+      if (pointerId !== null) return;
       e.preventDefault();
-      el.classList.add('pressed');
-      emulator.buttonDown(button);
+      pointerId = e.pointerId;
+      try { element.setPointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
+      element.classList.add('pressed');
+      this.pressButton(button);
     };
 
-    const pressEnd = (e) => {
-      e.preventDefault();
-      el.classList.remove('pressed');
-      emulator.buttonUp(button);
+    const release = (e) => {
+      if (pointerId === null) return;
+      if (e && e.pointerId !== undefined && e.pointerId !== pointerId) return;
+      pointerId = null;
+      element.classList.remove('pressed');
+      this.releaseButton(button);
     };
 
-    el.addEventListener('mousedown', pressStart);
-    el.addEventListener('mouseup', pressEnd);
-    el.addEventListener('mouseleave', pressEnd);
-    el.addEventListener('touchstart', pressStart, { passive: false });
-    el.addEventListener('touchend', pressEnd);
-    el.addEventListener('touchcancel', pressEnd);
+    element.addEventListener('pointerdown', press);
+    element.addEventListener('pointerup', release);
+    element.addEventListener('pointercancel', release);
+    element.addEventListener('lostpointercapture', release);
+    // 鼠标移出后松开（指针捕获失效时的兜底）
+    element.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'mouse') release(e);
+    });
   }
 
   /**
-   * 获取按键显示名称
+   * 绑定方向区域（方向键区 / 摇杆区通用）
+   * 根据触点相对中心的位置计算 4 向或 8 向
    */
+  _bindDirectionZone(zone, opts) {
+    const knob = this.gamepadElements.joystickKnob;
+    const useJoystick = opts && opts.joystick;
+    const state = { pointerId: null };
+
+    const handle = (e) => {
+      const rect = zone.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const radius = Math.min(rect.width, rect.height) / 2;
+      let dx = e.clientX - cx;
+      let dy = e.clientY - cy;
+
+      const dist = Math.hypot(dx, dy);
+      // 摇杆可视化：旋钮跟随手指，限制在半径内
+      if (useJoystick && knob) {
+        const max = radius * 0.62;
+        const k = dist > max ? max / dist : 1;
+        knob.style.transform =
+          `translate(-50%, -50%) translate(${(dx * k).toFixed(1)}px, ${(dy * k).toFixed(1)}px)`;
+      }
+
+      // 死区：摇杆略小，方向键区略大（避免误触斜向）
+      const dead = radius * (useJoystick ? 0.22 : 0.28);
+      if (dist < dead) {
+        this._setDirectionState({});
+        return;
+      }
+
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const threshold = useJoystick ? 0.4 : 0.58;
+
+      this._setDirectionState({
+        up: ny < -threshold,
+        down: ny > threshold,
+        left: nx < -threshold,
+        right: nx > threshold
+      });
+    };
+
+    const down = (e) => {
+      if (state.pointerId !== null) return;
+      e.preventDefault();
+      state.pointerId = e.pointerId;
+      try { zone.setPointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
+      zone.classList.add('active');
+      handle(e);
+    };
+
+    const move = (e) => {
+      if (e.pointerId !== state.pointerId) return;
+      e.preventDefault();
+      handle(e);
+    };
+
+    const up = (e) => {
+      if (state.pointerId === null) return;
+      if (e && e.pointerId !== undefined && e.pointerId !== state.pointerId) return;
+      state.pointerId = null;
+      zone.classList.remove('active');
+      this._setDirectionState({});
+      if (useJoystick) this._resetJoystickVisual();
+    };
+
+    zone.addEventListener('pointerdown', down);
+    zone.addEventListener('pointermove', move);
+    zone.addEventListener('pointerup', up);
+    zone.addEventListener('pointercancel', up);
+    zone.addEventListener('lostpointercapture', up);
+  }
+
+  /**
+   * 设置方向状态（只发送变化的按键）
+   */
+  _setDirectionState(dirs) {
+    const next = new Set();
+    if (dirs.up) next.add(this.BUTTONS.UP);
+    if (dirs.down) next.add(this.BUTTONS.DOWN);
+    if (dirs.left) next.add(this.BUTTONS.LEFT);
+    if (dirs.right) next.add(this.BUTTONS.RIGHT);
+
+    for (const button of next) {
+      if (!this.directionState.has(button)) this.pressButton(button);
+    }
+    for (const button of this.directionState) {
+      if (!next.has(button)) this.releaseButton(button);
+    }
+
+    this.directionState = next;
+    this._updateDpadVisual(next);
+  }
+
+  /**
+   * 方向键高亮
+   */
+  _updateDpadVisual(dirSet) {
+    const map = {
+      dpadUp: this.BUTTONS.UP,
+      dpadDown: this.BUTTONS.DOWN,
+      dpadLeft: this.BUTTONS.LEFT,
+      dpadRight: this.BUTTONS.RIGHT
+    };
+    for (const [id, button] of Object.entries(map)) {
+      const el = this.gamepadElements[id];
+      if (el) el.classList.toggle('pressed', dirSet.has(button));
+    }
+  }
+
+  /**
+   * 摇杆旋钮回中
+   */
+  _resetJoystickVisual() {
+    const knob = this.gamepadElements.joystickKnob;
+    if (knob) knob.style.transform = 'translate(-50%, -50%)';
+  }
+
+  // ==================== 显示名称 ====================
+
   getKeyDisplayName(code) {
     const displayNames = {
-      'ArrowUp': '↑',
-      'ArrowDown': '↓',
-      'ArrowLeft': '←',
-      'ArrowRight': '→',
-      'KeyW': 'W',
-      'KeyS': 'S',
-      'KeyA': 'A',
-      'KeyD': 'D',
-      'KeyZ': 'Z',
-      'KeyJ': 'J',
-      'KeyX': 'X',
-      'KeyK': 'K',
-      'Enter': 'Enter',
-      'ShiftRight': 'Shift',
-      'ShiftLeft': 'Shift',
-      'Space': '空格',
-      'KeyQ': 'Q',
-      'KeyE': 'E',
-      'KeyR': 'R',
-      'KeyT': 'T',
-      'KeyY': 'Y',
-      'KeyU': 'U',
-      'KeyI': 'I',
-      'KeyO': 'O',
-      'KeyP': 'P',
-      'KeyF': 'F',
-      'KeyG': 'G',
-      'KeyH': 'H',
-      'KeyL': 'L',
-      'KeyC': 'C',
-      'KeyV': 'V',
-      'KeyB': 'N',
-      'KeyN': 'N',
-      'KeyM': 'M',
-      'Digit1': '1',
-      'Digit2': '2',
-      'Digit3': '3',
-      'Digit4': '4',
-      'Digit5': '5',
-      'Digit6': '6',
-      'Digit7': '7',
-      'Digit8': '8',
-      'Digit9': '9',
-      'Digit0': '0',
-      'Backspace': '退格',
-      'Backquote': '`',
-      'Minus': '-',
-      'Equal': '=',
-      'BracketLeft': '[',
-      'BracketRight': ']',
-      'Backslash': '\\',
-      'Semicolon': ';',
-      'Quote': "'",
-      'Comma': ',',
-      'Period': '.',
-      'Slash': '/',
-      'Numpad1': '小键盘1',
-      'Numpad2': '小键盘2',
-      'Numpad3': '小键盘3',
-      'Numpad4': '小键盘4',
-      'Numpad5': '小键盘5',
-      'Numpad6': '小键盘6',
-      'Numpad7': '小键盘7',
-      'Numpad8': '小键盘8',
-      'Numpad9': '小键盘9',
-      'Numpad0': '小键盘0',
-      'NumpadEnter': '小键盘Enter',
-      'NumpadAdd': '小键盘+',
-      'NumpadSubtract': '小键盘-',
-      'NumpadMultiply': '小键盘*',
-      'NumpadDivide': '小键盘/',
+      'ArrowUp': '↑', 'ArrowDown': '↓', 'ArrowLeft': '←', 'ArrowRight': '→',
+      'KeyW': 'W', 'KeyS': 'S', 'KeyA': 'A', 'KeyD': 'D',
+      'KeyZ': 'Z', 'KeyJ': 'J', 'KeyX': 'X', 'KeyK': 'K',
+      'Enter': 'Enter', 'ShiftRight': 'Shift', 'ShiftLeft': 'Shift', 'Space': '空格',
+      'KeyQ': 'Q', 'KeyE': 'E', 'KeyR': 'R', 'KeyT': 'T', 'KeyY': 'Y',
+      'KeyU': 'U', 'KeyI': 'I', 'KeyO': 'O', 'KeyP': 'P',
+      'KeyF': 'F', 'KeyG': 'G', 'KeyH': 'H', 'KeyL': 'L',
+      'KeyC': 'C', 'KeyV': 'V', 'KeyB': 'B', 'KeyN': 'N', 'KeyM': 'M',
+      'Digit1': '1', 'Digit2': '2', 'Digit3': '3', 'Digit4': '4', 'Digit5': '5',
+      'Digit6': '6', 'Digit7': '7', 'Digit8': '8', 'Digit9': '9', 'Digit0': '0',
+      'Backspace': '退格', 'Backquote': '`', 'Minus': '-', 'Equal': '=',
+      'BracketLeft': '[', 'BracketRight': ']', 'Backslash': '\\',
+      'Semicolon': ';', 'Quote': "'", 'Comma': ',', 'Period': '.', 'Slash': '/',
+      'Numpad1': '小键盘1', 'Numpad2': '小键盘2', 'Numpad3': '小键盘3',
+      'Numpad4': '小键盘4', 'Numpad5': '小键盘5', 'Numpad6': '小键盘6',
+      'Numpad7': '小键盘7', 'Numpad8': '小键盘8', 'Numpad9': '小键盘9',
+      'Numpad0': '小键盘0', 'NumpadEnter': '小键盘Enter',
+      'NumpadAdd': '小键盘+', 'NumpadSubtract': '小键盘-',
+      'NumpadMultiply': '小键盘*', 'NumpadDivide': '小键盘/',
       'NumpadDecimal': '小键盘.',
     };
     return displayNames[code] || code;

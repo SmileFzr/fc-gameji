@@ -36,19 +36,29 @@
 
 html, body {
   width: 100%;
-  height: 100%;
+  min-height: 100%;
   overflow-x: hidden;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
 }
 
 body {
   font-family: var(--font-main);
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 20px;
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
   color: var(--fc-dark);
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ========== 背景粒子 ========== */
@@ -78,11 +88,16 @@ body {
   100% { transform: translateY(-10vh) scale(1.5); opacity: 0; }
 }
 
+/* 显示虚拟手柄时给页面底部留出空间，避免遮住机壳内容 */
+body.pad-visible {
+  padding-bottom: calc(var(--pad-height, 168px) + 16px + env(safe-area-inset-bottom, 0px));
+}
+
 /* ========== FC游戏机外壳 ========== */
 .fc-console {
   position: relative;
   z-index: 1;
-  max-width: 960px;
+  max-width: min(var(--console-max, 960px), 100%);
   width: 100%;
   background: linear-gradient(180deg, #e8d5b0 0%, #d4c4a0 30%, #c9b896 100%);
   border-radius: var(--radius-lg);
@@ -92,6 +107,7 @@ body {
     inset 0 -2px 4px rgba(0,0,0,0.1);
   overflow: hidden;
   border: 3px solid #a08060;
+  transition: max-width 0.25s ease;
 }
 
 /* ========== 顶部标题栏 ========== */
@@ -205,6 +221,7 @@ body {
     inset 0 4px 8px rgba(0,0,0,0.5),
     var(--shadow-md);
   border: 2px solid #555;
+  overflow: hidden; /* 兜底：任何情况下画面都不会画到电视框外面 */
 }
 
 .screen-container {
@@ -447,6 +464,33 @@ body {
   gap: 8px;
 }
 
+/* 三个开关排成两列，右侧面板更紧凑 */
+.settings-row.toggle-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 6px;
+  margin-bottom: 8px;
+}
+
+.settings-row.toggle-grid .toggle-label {
+  font-size: 0.75rem;
+  gap: 6px;
+}
+
+.settings-row.toggle-grid .toggle-switch {
+  width: 34px;
+  height: 19px;
+}
+
+.settings-row.toggle-grid .toggle-switch::after {
+  width: 15px;
+  height: 15px;
+}
+
+.settings-row.toggle-grid .toggle-label input:checked + .toggle-switch::after {
+  transform: translateX(15px);
+}
+
 .toggle-label {
   display: flex;
   align-items: center;
@@ -499,14 +543,131 @@ body {
   font-weight: 500;
 }
 
+.slider-label.static {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--fc-gray-light);
+  font-size: 0.75rem;
+}
+
 .scale-select {
-  padding: 4px 8px;
+  width: 100%;
+  padding: 5px 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 0.8rem;
   background: white;
   cursor: pointer;
   font-family: var(--font-main);
+}
+
+/* 音量滑块 */
+.volume-value {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--fc-red);
+  font-weight: 700;
+}
+
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg,
+    var(--fc-red) 0%,
+    var(--fc-red) var(--vol, 70%),
+    #ded3bd var(--vol, 70%),
+    #ded3bd 100%);
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--fc-red);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+
+.volume-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #ded3bd;
+}
+
+.volume-slider::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fc-red);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--fc-red);
+}
+
+/* 分段选择器（方向键 / 摇杆） */
+.segmented {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: #f0e6d2;
+  border: 1px solid #e0d5c0;
+  border-radius: 9px;
+}
+
+.seg-btn {
+  flex: 1;
+  padding: 7px 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fc-gray-light);
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: var(--font-main);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.seg-btn.active {
+  background: #fff;
+  color: var(--fc-red);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+
+.seg-btn:active {
+  transform: scale(0.97);
+}
+
+.panel-hint {
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: #999;
+  margin-top: 6px;
+}
+
+/* 仅桌面 / 仅触屏 */
+.touch-only { display: none; }
+
+@media (pointer: coarse) {
+  .desktop-only { display: none !important; }
+  .touch-only { display: block; }
 }
 
 /* ========== 按键映射面板 ========== */
@@ -700,11 +861,19 @@ body {
 @media (max-width: 800px) {
   body {
     padding: 10px;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
     align-items: flex-start;
+  }
+
+  .fc-console {
+    max-width: 100%;
   }
 
   .console-body {
     flex-direction: column;
+    padding: 12px;
+    gap: 12px;
   }
 
   .control-section {
@@ -725,11 +894,6 @@ body {
     padding: 2px 6px;
   }
 
-  .console-body {
-    padding: 12px;
-    gap: 12px;
-  }
-
   .screen-bezel {
     padding: 10px;
   }
@@ -743,13 +907,271 @@ body {
   }
 }
 
-@media (max-width: 500px) {
+@media (max-width: 560px) {
   .header-left, .header-right {
     display: none;
   }
 
+  /* 手机屏幕更大一点：收紧机壳内边距 */
+  .fc-console {
+    border-width: 2px;
+  }
+
+  .console-body {
+    padding: 8px;
+  }
+
+  .screen-bezel {
+    padding: 6px;
+  }
+
   .button-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .console-footer {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    padding: 6px 12px;
+    font-size: 0.65rem;
+    text-align: center;
+  }
+
+  .ctrl-btn {
+    padding: 12px 8px;
+    font-size: 0.78rem;
+  }
+
+  /* 手机不必显示键盘映射，触屏操作更直观 */
+  .keymap-panel {
+    display: none;
+  }
+
+  .modal {
+    width: calc(100% - 20px);
+    max-height: 86dvh;
+  }
+
+  .toast-container {
+    left: 12px;
+    right: 12px;
+    align-items: center;
+  }
+
+  .toast {
+    max-width: 100%;
+    font-size: 0.8rem;
+  }
+}
+
+/* 触屏设备：为底部手柄留出空间，禁用手势缩放/长按菜单 */
+@media (pointer: coarse) {
+  body {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  body.pad-visible {
+    padding-bottom: calc(var(--pad-height, 168px) + 16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .keymap-panel {
+    display: none;
+  }
+
+  .screen-container,
+  .ctrl-btn,
+  .seg-btn,
+  .btn {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
+/* ========== 桌面端：整机不超出视口，右侧面板内部滚动 ========== */
+@media (min-width: 801px) and (min-height: 760px) {
+  .fc-console {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 40px);
+    /* 高度换算：画面高度受视口高度限制，避免「超大」档撑出电视框 */
+    /* (100dvh - 258px) 是画面可用高度；乘 256/240 得画面宽度；再 +362px 是右侧面板与内边距 */
+    max-width: min(var(--console-max, 960px), calc((100dvh - 258px) * 256 / 240 + 362px), 100%);
+  }
+
+  .console-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: flex-start;
+  }
+
+  .screen-section {
+    align-self: center;
+  }
+
+  .control-section {
+    /* 100dvh - 机壳上下内边距 - 标题栏 - 状态栏 */
+    max-height: calc(100dvh - 186px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 4px;
+  }
+
+  .control-section::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .control-section::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .control-section::-webkit-scrollbar-thumb {
+    background: rgba(160, 140, 110, 0.55);
+    border-radius: 4px;
+  }
+
+  .control-section::-webkit-scrollbar-thumb:hover {
+    background: rgba(160, 140, 110, 0.85);
+  }
+
+  .control-section::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .control-section::-webkit-scrollbar-thumb {
+    background: #c9b896;
+    border-radius: 3px;
+  }
+}
+
+/* ========== 沉浸模式（全屏专注打游戏） ========== */
+body.focus-mode {
+  padding: 0;
+  align-items: stretch;
+  background: #000;
+  overflow: hidden;
+}
+
+body.focus-mode .bg-particles,
+body.focus-mode .console-header,
+body.focus-mode .console-footer,
+body.focus-mode .control-section,
+body.focus-mode .screen-label {
+  display: none;
+}
+
+body.focus-mode .fc-console {
+  max-width: none;
+  width: 100%;
+  height: 100dvh;
+  border: none;
+  border-radius: 0;
+  background: #0a0a0a;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+}
+
+body.focus-mode .console-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  overflow: hidden;
+}
+
+body.focus-mode .screen-section {
+  width: 100%;
+}
+
+body.focus-mode .screen-bezel {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: #000;
+  box-shadow: none;
+}
+
+body.focus-mode .screen-container {
+  width: 100%;
+  max-width: calc((100dvh - var(--pad-height, 0px)) * 256 / 240);
+  max-height: calc(100dvh - var(--pad-height, 0px));
+  margin: 0 auto;
+  border-radius: 0;
+}
+
+/* 沉浸模式下屏幕贴顶，避免被页面居中留白 */
+body.focus-mode .screen-container.running {
+  box-shadow: none;
+}
+
+/* ========== 手机横屏：隐藏机壳装饰，让画面完整可见 ========== */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 540px) {
+  body {
+    padding: 4px;
+    padding-left: max(4px, env(safe-area-inset-left));
+    padding-right: max(4px, env(safe-area-inset-right));
+    align-items: flex-start;
+  }
+
+  body.pad-visible {
+    padding-bottom: 4px;
+  }
+
+  .fc-console {
+    max-width: 100%;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #1c1c22;
+    background: #101014;
+  }
+
+  .console-body {
+    flex-direction: column;
+    padding: 6px;
+    gap: 6px;
+    background: #101014;
+  }
+
+  .console-header,
+  .console-footer,
+  .screen-label,
+  .keymap-panel {
+    display: none;
+  }
+
+  .screen-section {
+    display: flex;
+    justify-content: center;
+  }
+
+  .screen-bezel {
+    width: fit-content;
+    padding: 5px;
+    border-radius: 8px;
+    background: #08080b;
+    box-shadow: none;
+    border: 1px solid #26262e;
+  }
+
+  .screen-container {
+    width: calc((100dvh - 34px) * 256 / 240);
+    max-width: calc(100vw - 24px);
+    margin: 0 auto;
+  }
+
+  /* 沉浸模式下让画面吃满可用高度 */
+  body.focus-mode .screen-bezel {
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: #000;
+  }
+
+  .control-section {
+    width: 100%;
   }
 }
 
