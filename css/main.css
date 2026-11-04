@@ -37,10 +37,16 @@
 html, body {
   width: 100%;
   min-height: 100%;
-  overflow-x: hidden;
 }
 
+/*
+ * 横向溢出只在 html 上裁切，千万不要同时给 body 加 overflow-x: hidden。
+ * body 一旦有 overflow-x: hidden，overflow-y 会被计算为 auto，
+ * body 就成了滚动容器；Android Chrome 的单指滑动手势会被锁在 body 上、
+ * 不再向文档冒泡，表现出来就是「单指滑不动，必须双指才能滚动」。
+ */
 html {
+  overflow-x: hidden;
   -webkit-text-size-adjust: 100%;
   overscroll-behavior: none;
 }

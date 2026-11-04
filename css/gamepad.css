@@ -25,7 +25,8 @@
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  touch-action: none;
+  /* 空白处允许单指上下滑动页面；真正的按键区各自设回 touch-action: none */
+  touch-action: pan-y;
   overscroll-behavior: contain;
 }
 
@@ -363,15 +364,20 @@ body:not(.pad-visible) .pad-fab {
 }
 
 /* ========== 响应式尺寸 ========== */
-@media (max-width: 420px) {
+/* 手机：左右留出手势安全距离（Android 返回手势区约 20~24dp），按键不再贴边 */
+@media (max-width: 480px) {
   :root {
-    --pad-size: 122px;
+    --pad-size: 118px;
     --action-size: 52px;
-    --pad-height: 150px;
+    --pad-height: 146px;
   }
 
   .virtual-gamepad {
-    padding: 8px 10px calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 8px 26px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .pad-tools {
+    right: max(26px, env(safe-area-inset-right));
   }
 
   .dpad-btn {
@@ -386,7 +392,7 @@ body:not(.pad-visible) .pad-fab {
   }
 
   .func-btn {
-    min-width: 54px;
+    min-width: 56px;
     height: 24px;
     font-size: 0.55rem;
   }
@@ -474,10 +480,29 @@ body:not(.pad-visible) .pad-fab {
 }
 
 /* 极窄屏：确保三个区域还能放下 */
-@media (max-width: 340px) {
+@media (max-width: 360px) {
   :root {
-    --pad-size: 108px;
-    --action-size: 46px;
+    --pad-size: 106px;
+    --action-size: 48px;
+  }
+
+  .virtual-gamepad {
+    padding: 8px 20px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .pad-tools {
+    right: max(20px, env(safe-area-inset-right));
+  }
+
+  .dpad-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 0.85rem;
+  }
+
+  .dpad-center {
+    width: 34px;
+    height: 34px;
   }
 
   .action-area {

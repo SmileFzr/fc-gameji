@@ -260,7 +260,23 @@ class UIManager {
     // 触屏设备在游戏开始后自动显示虚拟手柄
     if (this.isTouchDevice()) {
       this.setPadVisible(true);
+      this.maybeShowTouchHint();
     }
+  }
+
+  /**
+   * 首次加载游戏时提示一次：单指滑动可查看下方设置
+   */
+  maybeShowTouchHint() {
+    try {
+      if (sessionStorage.getItem('fc_touch_hint')) return;
+      sessionStorage.setItem('fc_touch_hint', '1');
+    } catch (e) {
+      return;
+    }
+    setTimeout(() => {
+      this.showToast('单指上下滑动，可查看下方设置', 'info');
+    }, 1800);
   }
 
   /**
